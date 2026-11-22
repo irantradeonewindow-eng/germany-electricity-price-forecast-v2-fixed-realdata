@@ -2,8 +2,8 @@ name: Daily Electricity Price Forecast
 
 on:
   schedule:
-    # 09:00 UTC ≈ 10:00 CET (winter) / 11:00 CEST (summer) — before noon DE gate
-    - cron: "0 9 * * *"
+    # 09:15 UTC ≈ 10:15 Berlin in winter — BEFORE 11:00 UTC gate
+    - cron: "15 9 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -13,23 +13,23 @@ jobs:
   forecast:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Install
         run: |
           pip install -r requirements.txt
           pip install -e .
 
-      - name: Restore data cache
+      - name: Ensure dirs
+        run: mkdir -p data/raw outputs/forecasts outputs/figures logs reports/metrics reports/figures
+
+      - name: Restore raw data cache
         uses: actions/cache@v4
         with:
           path: data/raw
@@ -37,40 +37,18 @@ jobs:
           restore-keys: |
             raw-data-
 
-      - name: Ensure data directories
-        run: mkdir -p data/raw outputs/forecasts outputs/figures reports/metrics reports/figures logs
-
-      - name: Update data + run forecast
-        run: python scripts/run_daily_forecast.py
-
-      - name: Rolling eval (incremental)
+      - name: Daily forecast
+        env:
+          ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
         run: |
-          if [ -f scripts/run_rolling_eval.py ]; then
-            python scripts/run_rolling_eval.py --incremental || echo "rolling eval skipped"
-          fi
+          python scripts/update_data.py
+          python scripts/run_daily_forecast.py --no-update
 
-      - name: Upload forecast artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: forecast-${{ github.run_id }}
-          path: |
-            outputs/forecasts/
-            outputs/figures/
-          if-no-files-found: warn
-
-      - name: Commit forecast output and README
+      - name: Commit outputs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p outputs/forecasts outputs/figures reports/metrics reports/figures
-          git add outputs/forecasts/*.csv || true
-          git add outputs/figures/*.png || true
-          git add reports/metrics/*.csv || true
-          git add reports/figures/*.png || true
-          git add README.md || true
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore: daily forecast $(date -u +%Y-%m-%d)"
-            git push
-          fi
+          git add outputs/ README.md reports/ || true
+          git diff --staged --quiet || git commit -m "chore: daily forecast $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main || true
+          git push origin main
