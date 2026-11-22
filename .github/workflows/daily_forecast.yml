@@ -2,7 +2,7 @@ name: Daily Electricity Price Forecast
 
 on:
   schedule:
-    # 09:15 UTC ≈ 10:15 Berlin (winter) — before 11:00 UTC gate
+    # 09:15 UTC ≈ 10:15 Berlin in winter — BEFORE 11:00 UTC gate
     - cron: "15 9 * * *"
   workflow_dispatch: {}
 
@@ -13,26 +13,23 @@ jobs:
   forecast:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Install
         run: |
           pip install -r requirements.txt
           pip install -e .
 
-      - name: Ensure directories
+      - name: Ensure dirs
         run: mkdir -p data/raw outputs/forecasts outputs/figures logs reports/metrics reports/figures
 
-      - name: Restore data cache
+      - name: Restore raw data cache
         uses: actions/cache@v4
         with:
           path: data/raw
@@ -40,14 +37,14 @@ jobs:
           restore-keys: |
             raw-data-
 
-      - name: Update data + forecast
+      - name: Daily forecast
         env:
           ENTSOE_API_KEY: ${{ secrets.ENTSOE_API_KEY }}
         run: |
           python scripts/update_data.py
           python scripts/run_daily_forecast.py --no-update
 
-      - name: Commit and push outputs
+      - name: Commit outputs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
